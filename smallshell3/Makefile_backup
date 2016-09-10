@@ -1,0 +1,21 @@
+objects = smsh1.o execute.o splitline.o process.o controlflow.o builtin.o varlib.o
+
+smsh : $(objects)
+	cc -o smsh $(objects)
+
+execute.o:
+
+smsh1.o:
+
+splitline.o:
+
+process.o:
+
+controlflow.o:
+
+builtin.o:
+
+varlib.o:
+
+clean:
+	rm -f $(objects) smsh
