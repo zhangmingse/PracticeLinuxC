@@ -13,9 +13,27 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <signal.h>
+#include <sys/epoll.h>
+#include <fcntl.h>
+#include <assert.h>
 
 #define SERVER_STRING "Server : zmhttpd/0.1.0\r\n"
 #define IS_SPACE(x) isspace((int)x)
+
+#define MAXCONN 200
+#define BUFSIZE 512
+#define MAX_EVENTS MAXCONN
+
+struct sockfd_opt
+{
+	int fd;
+	int (* do_task)(struct sockfd_opt *p_so);
+};
+
+typedef struct sockfd_opt SOCKOPT;
+
+int epfd;
+int num;			//current total num of connections
 void err_die(char * info)
 {
 	perror(info);
@@ -280,8 +298,9 @@ void * parse_request(void * arg)
 {
 	int buf_size = 1024;
 	char buf[buf_size];
-	int client_sock_fd = *((int *)arg);
-	free(arg);
+	struct sockfd_opt * ptr_s_opt = ((struct sockfd_opt *)arg);
+	int client_sock_fd = ptr_s_opt->fd;
+//	free(arg);
 	int cgi = 0;
 	int method_size = 100;
 	char buf_method[method_size];
@@ -310,7 +329,7 @@ void * parse_request(void * arg)
 		unimplemented(client_sock_fd);
 		return NULL;
 	}
-
+	printf("----------------------------------------------------\n");
 	if(strcasecmp(buf_method,"POST") == 0)
 	{
 		cgi = 1;
@@ -390,6 +409,18 @@ void * parse_request(void * arg)
 }
 
 
+void set_fd_nonblocking(int sock_fd)
+{
+	int opts;
+
+	opts = fcntl(sock_fd,F_GETFL);
+	if(opts < 0)
+		err_die("fcntl get options\n");
+	opts = opts | O_NONBLOCK;
+	if(fcntl(sock_fd,F_SETFL,opts))
+		err_die("fcntl set options\n");
+}
+
 int init_server_sock(int * port_p)
 {
 	int server_sock = 0;
@@ -406,6 +437,9 @@ int init_server_sock(int * port_p)
 	{
 		err_die("create server socket error.");
 	}
+
+	set_fd_nonblocking(server_sock);	
+	
 	fun_return = bind(server_sock , 
 			(struct sockaddr *)&server_addr,
 			sizeof(server_addr));
@@ -442,23 +476,137 @@ void handle_sigpipe(int arg)
 	printf("accept sigpipe.\n");
 }
 
+int init_epoll_fd()
+{
+	
+	epfd = epoll_create(MAXCONN);
+	if(epfd<0)
+	{
+		if(epfd==-1)
+		{
+			printf("epoll_create error.errno:%d\n",errno);
+		}
+		else
+		{
+			printf("epoll_create error. return value is not -1\n");
+		}
+		exit(1);
+	}
+	return epfd;
+}
+
+
+
+int create_conn(struct sockfd_opt * p_so)
+{
+	int new_client_fd;
+	struct sockaddr_in client_addr;
+	socklen_t sin_size;
+	sin_size = sizeof(struct sockaddr_in);
+	new_client_fd = accept(p_so->fd,(struct sockaddr*)(&client_addr),&sin_size);
+
+	if(new_client_fd == -1)
+	{
+		err_die("accept error\n");
+		exit(1);
+	}
+	
+	set_fd_nonblocking(new_client_fd);	
+
+	p_so = malloc(sizeof(struct sockfd_opt));
+	if(p_so == NULL )
+	{
+		err_die("malloc sockfd_opt\n");
+	}
+	p_so->fd = new_client_fd;
+	p_so->do_task = parse_request;
+
+	num++;
+	
+	struct epoll_event ep_event;
+
+	ep_event.data.ptr = p_so;
+	ep_event.events = EPOLLIN;
+	int ret_val;
+	ret_val = epoll_ctl(epfd,EPOLL_CTL_ADD,new_client_fd,&ep_event);
+	if(ret_val )
+	{
+		err_die("epoll_ctl add error\n");
+		return -1;
+	}
+	return 0;
+
+}
+
+int init(int fd)
+{
+	struct sockfd_opt *p_so;
+	p_so = malloc(sizeof(struct sockfd_opt));
+	if(p_so == NULL)
+	{
+		err_die("malloc sockfd_opt\n");
+	}
+	p_so->fd = fd;
+	p_so->do_task = create_conn;
+	
+
+	struct epoll_event epollevent;
+	epollevent.data.ptr = p_so;
+	epollevent.events = EPOLLIN;
+	
+	int ret_val = epoll_ctl(epfd,EPOLL_CTL_ADD,fd,&epollevent);
+	if(ret_val)
+		err_die("epoll_ctl\n");
+	num++;
+
+	return 0;
+
+}
 void main()
 {
-	int port = 7777;
+	int port = 80;
 	int server_sock_fd = 0;
 	int * client_sock_fd_p = NULL;
 	int client_sock_fd = 0;
+	struct epoll_event * events;
+	int events_num;
+	unsigned int hash;
+	struct sockfd_opt *p_so;
+	signal(SIGPIPE,handle_sigpipe);
+	
 	server_sock_fd = init_server_sock(&port);
-
+	init_epoll_fd();	
+	init(server_sock_fd);
 	printf("running on port : %d\n",port);
-	pthread_t newThread;
+/*	pthread_t newThread;
 	pthread_attr_t attr;
 	pthread_attr_init(&attr);
-	pthread_attr_setdetachstate(&attr,PTHREAD_CREATE_DETACHED);
-	signal(SIGPIPE,handle_sigpipe);
+	pthread_attr_setdetachstate(&attr,PTHREAD_CREATE_DETACHED);*/
+	
+	events = malloc(sizeof(struct epoll_event) * MAXCONN);
+	if(!events)
+	{
+		err_die("malloc epoll events\n");
+	}
 	while(1)
 	{
-		client_sock_fd = accept(server_sock_fd,NULL,NULL);
+
+		events_num = epoll_wait(epfd,events,MAX_EVENTS,-1);
+		if(events_num < 0)
+		{
+			free(events);
+			err_die("epoll_wait\n");
+		}
+		for(int i =0;i<events_num;i++)
+		{
+			p_so = (struct sockfd_opt *)(events[i].data.ptr);
+
+			p_so->do_task(p_so);
+		}
+
+
+
+/*		client_sock_fd = accept(server_sock_fd,NULL,NULL);
 		if(client_sock_fd < 0)
 		{
 			err_die("server socket accept error.");
@@ -470,5 +618,7 @@ void main()
 		}
 		*client_sock_fd_p = client_sock_fd;
 		pthread_create(&newThread,&attr,parse_request,(void *)client_sock_fd_p);
+		parse_request(&client_sock_fd);*/
 	}
+	return 0;
 }
