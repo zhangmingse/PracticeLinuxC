@@ -327,6 +327,8 @@ void * parse_request(void * arg)
 	if(strcasecmp(buf_method,"GET")&&strcasecmp(buf_method,"POST"))
 	{
 		unimplemented(client_sock_fd);
+		close(client_sock_fd);
+		free(ptr_s_opt);
 		return NULL;
 	}
 	printf("----------------------------------------------------\n");
