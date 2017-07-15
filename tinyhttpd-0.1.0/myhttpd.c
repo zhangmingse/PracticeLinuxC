@@ -117,7 +117,7 @@ void unimplemented(int sock_fd)
 
 void header(int sock_fd)
 {
-	int buf_size = 1024;
+	int buf_size = 30;
 	char buf[buf_size];
 	sprintf(buf,"HTTP/1.0 200 OK\r\n");
 	send(sock_fd,buf,strlen(buf),0);
@@ -137,6 +137,12 @@ void serve_file(int sock_fd,char * path)
 	FILE * file ;
 	printf("file path = %s\n",path);
 	file = fopen(path,"r");
+	if(file == NULL)
+	{
+		printf("file not exist\n");
+		file_not_found(sock_fd);
+		return;
+	}
 	int buf_size = 1024;
 	char buf[buf_size];
 	int read_len = 0;
@@ -147,18 +153,12 @@ void serve_file(int sock_fd,char * path)
 		read_len = get_line(sock_fd,buf,buf_size);
 	}
 
-	if(file == NULL)
-	{
-		printf("file not exist\n");
-		file_not_found(sock_fd);
-		return;
-	}
 
 	header(sock_fd);
 	fgets(buf,buf_size,file);
 	while(!feof(file))
 	{
-//		printf("%s\n",buf);
+		printf("==>serve_file :  %s\n",buf);
 		send(sock_fd,buf,strlen(buf),0);
 		fgets(buf,buf_size,file);
 	}
@@ -404,6 +404,7 @@ void * parse_request(void * arg)
 	}
 
 	close(client_sock_fd);
+	free(ptr_s_opt);
 	printf("close client sock\n");
 	return NULL;//to do
 }
@@ -473,7 +474,7 @@ int init_server_sock(int * port_p)
 
 void handle_sigpipe(int arg)
 {
-	printf("accept sigpipe.\n");
+	printf("accept sigpipe. %d \n",arg);
 }
 
 int init_epoll_fd()
@@ -597,7 +598,8 @@ void main()
 			free(events);
 			err_die("epoll_wait\n");
 		}
-		for(int i =0;i<events_num;i++)
+		int i = 0;
+		for(i =0;i<events_num;i++)
 		{
 			p_so = (struct sockfd_opt *)(events[i].data.ptr);
 
