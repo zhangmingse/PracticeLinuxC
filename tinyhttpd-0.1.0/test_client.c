@@ -7,6 +7,8 @@
 #include<netinet/in.h>
 #include<arpa/inet.h>
 #include<pthread.h>
+#include<sys/time.h>
+
 
 int conn_num = 0;
 int test_create_conn(void * arg)
@@ -29,7 +31,8 @@ int test_create_conn(void * arg)
 void * client_do(void * arg)
 {
 
-	printf("thread %lu start working \n",pthread_self());
+	//printf("thread %lu start working \n",pthread_self());
+	struct timeval time_start,time_end;
 	struct sockaddr_in* saddr = (struct sockaddr_in*)arg;
 	int sock_fd;
 	sock_fd = socket(saddr->sin_family,SOCK_STREAM,0);
@@ -47,6 +50,7 @@ void * client_do(void * arg)
 	int bufsize = 1024;
 	char buf[bufsize];
 	int send_len = 0;
+	gettimeofday(&time_start,NULL);
 	send_len =  send(sock_fd,request,request_len,0);
 
 	/*********************************************/
@@ -60,6 +64,7 @@ void * client_do(void * arg)
 	}
 	int read_len =0;
 	read_len = recv(sock_fd,buf,bufsize,0);
+	gettimeofday(&time_end,NULL);
 	while(read_len>0)
 	{
 		if(read_len >= bufsize)
@@ -67,12 +72,19 @@ void * client_do(void * arg)
 			read_len = bufsize-1;
 		}
 		buf[read_len]= '\0';
-		printf("%s",buf);
+//		printf("%s",buf);
 		read_len=recv(sock_fd,buf,bufsize,0);
 	}
 	close(sock_fd);
-	printf("done %lu\n",pthread_self());
-
+	long time_span = (time_end.tv_sec * 1000000 + time_end.tv_usec)-(time_start.tv_sec * 1000000 +time_start.tv_usec);
+	long * ptr_long = malloc(sizeof(long));
+	*ptr_long = time_span;
+	if(time_span < 0)
+	{
+		printf("========>>>>>> %ld  :: %ld\n",time_end.tv_sec * 1000000 + time_end.tv_usec,time_start.tv_sec * 1000000 + time_start.tv_usec);
+	}
+//	printf("done %lu\n",pthread_self());
+	return ((void * ) ptr_long);
 }
 
 
@@ -101,6 +113,7 @@ void main(int ac ,char * args[])
 	client_count = atoi(args[3]);
 	int max_client_count = 30000;
 	int conn_fd_arr[max_client_count];
+	long time_span[max_client_count];
 	if(client_count <=0 || client_count > max_client_count)
 	{
 		printf("client number is out of limit.it should between 1 and %d\n",max_client_count);
@@ -111,26 +124,36 @@ void main(int ac ,char * args[])
 
 	for(;index<client_count;index++)
 	{
-		conn_fd_arr[index] = test_create_conn((void *)saddr);
+/*		conn_fd_arr[index] = test_create_conn((void *)saddr);
 		if(conn_fd_arr[index]==-1)
 		{
 			break;
-		}
-	//	pthread_create(thread_id+index,NULL,client_do,(void *)saddr);
+		}*/
+		pthread_create(thread_id+index,NULL,client_do,(void *)saddr);
 	}
-	printf("enter to exit\n");
+/*	printf("enter to exit\n");
 	getchar();
 	for(index = 0;index<conn_num;index++)
 	{
 		close(conn_fd_arr[index]);
-	}
+	}*/
 
-	/*index = 0;
+	index = 0;
+	long * ptr_long;
 	for(;index < client_count;index++)
 	{	
-		pthread_join(thread_id[index],NULL);
+		pthread_join(thread_id[index],(void **)&ptr_long);
+		time_span[index] = *ptr_long;
+		free(ptr_long);
 	}
-
-	free(saddr);*/
-	printf("done\n");
+	long total_time = 0;
+	for(index = 0;index < client_count;index++)
+	{
+	//	printf("===%ld \n ",time_span[index]);
+		total_time += time_span[index];
+	}
+	long average_time_span = total_time / client_count;
+	free(saddr);
+	printf("total time %ld \n",total_time);
+	printf("done! average time : %ld usec\n",average_time_span);
 }
