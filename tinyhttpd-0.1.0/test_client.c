@@ -111,7 +111,7 @@ void main(int ac ,char * args[])
 
 	int client_count = 0;
 	client_count = atoi(args[3]);
-	int max_client_count = 30000;
+	int max_client_count = 100000;
 	int conn_fd_arr[max_client_count];
 	long time_span[max_client_count];
 	if(client_count <=0 || client_count > max_client_count)
@@ -139,12 +139,13 @@ void main(int ac ,char * args[])
 	}*/
 
 	index = 0;
-	long * ptr_long;
+	long * ptr_long = NULL;
 	for(;index < client_count;index++)
 	{	
 		pthread_join(thread_id[index],(void **)&ptr_long);
 		time_span[index] = *ptr_long;
 		free(ptr_long);
+		ptr_long = NULL;
 	}
 	long total_time = 0;
 	for(index = 0;index < client_count;index++)
@@ -154,6 +155,7 @@ void main(int ac ,char * args[])
 	}
 	long average_time_span = total_time / client_count;
 	free(saddr);
+	saddr = NULL;
 	printf("total time %ld \n",total_time);
 	printf("done! average time : %ld usec\n",average_time_span);
 }

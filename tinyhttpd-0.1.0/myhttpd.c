@@ -135,7 +135,7 @@ void header(int sock_fd)
 void serve_file(int sock_fd,char * path)
 {
 	FILE * file ;
-	printf("file path = %s\n",path);
+//	printf("file path = %s\n",path);
 	file = fopen(path,"r");
 	if(file == NULL)
 	{
@@ -158,7 +158,7 @@ void serve_file(int sock_fd,char * path)
 	fgets(buf,buf_size,file);
 	while(!feof(file))
 	{
-		printf("==>serve_file :  %s\n",buf);
+//		printf("==>serve_file :  %s\n",buf);
 		send(sock_fd,buf,strlen(buf),0);
 		fgets(buf,buf_size,file);
 	}
@@ -331,7 +331,7 @@ void * parse_request(void * arg)
 		free(ptr_s_opt);
 		return NULL;
 	}
-	printf("----------------------------------------------------\n");
+//	printf("----------------------------------------------------\n");
 	if(strcasecmp(buf_method,"POST") == 0)
 	{
 		cgi = 1;
@@ -375,7 +375,7 @@ void * parse_request(void * arg)
 //		printf("%s\n",buf_url);
 	}
 	sprintf(buf_path,"htdocs%s",buf_url);
-	printf("url = %s\n",buf_path);
+//	printf("url = %s\n",buf_path);
 	if(stat(buf_path,&dest_file_stat) == -1)
 	{
 		file_not_found(client_sock_fd);	
@@ -407,7 +407,7 @@ void * parse_request(void * arg)
 
 	close(client_sock_fd);
 	free(ptr_s_opt);
-	printf("close client sock\n");
+//	printf("close client sock\n");
 	return NULL;//to do
 }
 
