@@ -8,6 +8,23 @@
 #include<arpa/inet.h>
 #include<pthread.h>
 
+int conn_num = 0;
+int test_create_conn(void * arg)
+{
+
+	struct sockaddr_in* saddr = (struct sockaddr_in*)arg;
+	int sock_fd;
+	sock_fd = socket(saddr->sin_family,SOCK_STREAM,0);
+	int result_val = 0;
+	result_val	= connect(sock_fd,(struct sockaddr *)saddr,sizeof(struct sockaddr_in));
+	if(result_val !=0)
+	{
+		perror("connect error");
+		return -1;
+	}
+	printf("create conn success : %d\n" , conn_num++);
+	return sock_fd;
+}
 
 void * client_do(void * arg)
 {
@@ -83,6 +100,7 @@ void main(int ac ,char * args[])
 	int client_count = 0;
 	client_count = atoi(args[3]);
 	int max_client_count = 30000;
+	int conn_fd_arr[max_client_count];
 	if(client_count <=0 || client_count > max_client_count)
 	{
 		printf("client number is out of limit.it should between 1 and %d\n",max_client_count);
@@ -93,15 +111,26 @@ void main(int ac ,char * args[])
 
 	for(;index<client_count;index++)
 	{
-		pthread_create(thread_id+index,NULL,client_do,(void *)saddr);
+		conn_fd_arr[index] = test_create_conn((void *)saddr);
+		if(conn_fd_arr[index]==-1)
+		{
+			break;
+		}
+	//	pthread_create(thread_id+index,NULL,client_do,(void *)saddr);
+	}
+	printf("enter to exit\n");
+	getchar();
+	for(index = 0;index<conn_num;index++)
+	{
+		close(conn_fd_arr[index]);
 	}
 
-	index = 0;
+	/*index = 0;
 	for(;index < client_count;index++)
 	{	
 		pthread_join(thread_id[index],NULL);
 	}
 
-	free(saddr);
+	free(saddr);*/
 	printf("done\n");
 }
